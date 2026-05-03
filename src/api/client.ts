@@ -4,6 +4,68 @@ import { LoginResponse, Session, Transcript, AbortResponse, HealthResponse, Chat
 const TOKEN_KEY = 'brain_auth_token';
 const SERVER_KEY = 'brain_server_url';
 
+// ── XHR-based fetch replacement ──
+// React Native's Hermes fetch polyfill doesn't route through iOS VPN tunnel
+// interfaces (utun) for CGNAT addresses (100.x.x.x / Tailscale). XMLHttpRequest
+// uses RCTNetworking which correctly respects the system routing table.
+
+interface XHRResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  json(): Promise<any>;
+  text(): Promise<string>;
+}
+
+function xhrFetch(url: string, options?: {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string | null;
+  timeout?: number;
+  signal?: AbortSignal;
+}): Promise<XHRResponse> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(options?.method || 'GET', url);
+
+    if (options?.headers) {
+      for (const [key, value] of Object.entries(options.headers)) {
+        xhr.setRequestHeader(key, value);
+      }
+    }
+
+    xhr.timeout = options?.timeout ?? 30000;
+
+    xhr.onload = () => {
+      const body = xhr.responseText;
+      resolve({
+        ok: xhr.status >= 200 && xhr.status < 300,
+        status: xhr.status,
+        statusText: xhr.statusText,
+        json: () => Promise.resolve(JSON.parse(body)),
+        text: () => Promise.resolve(body),
+      });
+    };
+
+    xhr.onerror = () => reject(new Error('Network request failed (XHR)'));
+    xhr.ontimeout = () => reject(new Error('Request timed out'));
+
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        xhr.abort();
+        reject(new Error('Aborted'));
+        return;
+      }
+      options.signal.addEventListener('abort', () => {
+        xhr.abort();
+        reject(new Error('Aborted'));
+      });
+    }
+
+    xhr.send(options?.body ?? null);
+  });
+}
+
 // Default — override in settings
 let serverUrl = '';
 
@@ -39,8 +101,7 @@ export async function isAuthenticated(): Promise<boolean> {
   try {
     const base = await getServerUrl();
     if (!base) return false;
-    // Use an authenticated endpoint — /health is public and always 200
-    const resp = await fetch(`${base}/api/status`, {
+    const resp = await xhrFetch(`${base}/api/status`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (resp.status === 401) {
@@ -58,16 +119,9 @@ export async function isServerReachable(url?: string): Promise<string | true> {
   try {
     const base = url || await getServerUrl();
     if (!base) return 'No server URL configured';
-    // AbortSignal.timeout() doesn't exist in Hermes — use manual AbortController
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-    try {
-      const resp = await fetch(`${base}/health`, { signal: controller.signal });
-      if (!resp.ok) return `Server returned ${resp.status}`;
-      return true;
-    } finally {
-      clearTimeout(timer);
-    }
+    const resp = await xhrFetch(`${base}/health`, { timeout: 10000 });
+    if (!resp.ok) return `Server returned ${resp.status}`;
+    return true;
   } catch (e: any) {
     return e?.message || 'Unknown network error';
   }
@@ -77,7 +131,7 @@ export async function isServerReachable(url?: string): Promise<string | true> {
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
   const base = await getServerUrl();
-  const resp = await fetch(`${base}/api/login`, {
+  const resp = await xhrFetch(`${base}/api/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -97,7 +151,7 @@ export async function logout(): Promise<void> {
   const base = await getServerUrl();
   const token = await getToken();
   try {
-    await fetch(`${base}/api/logout`, {
+    await xhrFetch(`${base}/api/logout`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
@@ -109,20 +163,28 @@ export async function logout(): Promise<void> {
 
 // ── Authenticated fetch helper ──
 
-async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+async function apiFetch(path: string, options?: {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+}): Promise<XHRResponse> {
   const base = await getServerUrl();
   const token = await getToken();
   const headers: Record<string, string> = {
-    ...(options.headers as Record<string, string> || {}),
+    ...(options?.headers || {}),
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  if (options.body && !headers['Content-Type']) {
+  if (options?.body && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
 
-  const resp = await fetch(`${base}${path}`, { ...options, headers });
+  const resp = await xhrFetch(`${base}${path}`, {
+    method: options?.method,
+    headers,
+    body: options?.body,
+  });
 
   if (resp.status === 401) {
     await clearToken();
@@ -321,7 +383,7 @@ export async function streamChat(
 
 export async function getHealth(): Promise<HealthResponse> {
   const base = await getServerUrl();
-  const resp = await fetch(`${base}/health`);
+  const resp = await xhrFetch(`${base}/health`);
   return resp.json();
 }
 
