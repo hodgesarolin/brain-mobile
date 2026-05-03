@@ -54,21 +54,22 @@ export async function isAuthenticated(): Promise<boolean> {
 }
 
 /** Check if a server URL is reachable (no auth required) */
-export async function isServerReachable(url?: string): Promise<boolean> {
+export async function isServerReachable(url?: string): Promise<string | true> {
   try {
     const base = url || await getServerUrl();
-    if (!base) return false;
+    if (!base) return 'No server URL configured';
     // AbortSignal.timeout() doesn't exist in Hermes — use manual AbortController
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+    const timer = setTimeout(() => controller.abort(), 10000);
     try {
       const resp = await fetch(`${base}/health`, { signal: controller.signal });
-      return resp.ok;
+      if (!resp.ok) return `Server returned ${resp.status}`;
+      return true;
     } finally {
       clearTimeout(timer);
     }
-  } catch {
-    return false;
+  } catch (e: any) {
+    return e?.message || 'Unknown network error';
   }
 }
 

@@ -68,9 +68,9 @@ export function useAuthProvider(): AuthState {
 
   const setServer = useCallback(async (url: string) => {
     // Verify server is reachable before saving
-    const reachable = await client.isServerReachable(url.replace(/\/+$/, ''));
-    if (!reachable) {
-      throw new Error('Cannot reach server');
+    const result = await client.isServerReachable(url.replace(/\/+$/, ''));
+    if (result !== true) {
+      throw new Error(result);
     }
     await client.setServerUrl(url);
     setServerConfigured(true);
