@@ -29,7 +29,7 @@ export function LoginScreen() {
       await setServer(serverUrl.trim());
       setShowServer(false);
     } catch (e: any) {
-      setError('Cannot reach server');
+      setError(e?.message || 'Cannot reach server');
     } finally {
       setLoading(false);
     }
