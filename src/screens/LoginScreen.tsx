@@ -29,7 +29,13 @@ export function LoginScreen() {
       await setServer(serverUrl.trim());
       setShowServer(false);
     } catch (e: any) {
-      setError(e?.message || 'Cannot reach server');
+      const msg = e?.message || 'Cannot reach server';
+      // Add helpful context for common network errors
+      if (msg.includes('Network') || msg.includes('fetch') || msg.includes('timeout') || msg === 'Cannot reach server') {
+        setError(`${msg}\n\nMake sure Tailscale VPN is active and the Brain daemon is running.`);
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }

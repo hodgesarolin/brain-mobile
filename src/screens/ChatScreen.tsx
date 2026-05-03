@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import Markdown from 'react-native-markdown-display';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors } from '../theme/colors';
 import * as client from '../api/client';
@@ -245,6 +246,47 @@ export function ChatScreen({ route, navigation }: Props) {
     });
   };
 
+  // Markdown styles for assistant messages — dark theme
+  const mdStyles = useMemo(() => StyleSheet.create({
+    body: { color: colors.textPrimary, fontSize: 15, lineHeight: 22 },
+    heading1: { color: colors.textPrimary, fontSize: 22, fontWeight: '700', marginBottom: 8, marginTop: 12 },
+    heading2: { color: colors.textPrimary, fontSize: 19, fontWeight: '700', marginBottom: 6, marginTop: 10 },
+    heading3: { color: colors.textPrimary, fontSize: 17, fontWeight: '600', marginBottom: 4, marginTop: 8 },
+    paragraph: { marginBottom: 8, marginTop: 0 },
+    strong: { fontWeight: '700', color: colors.textPrimary },
+    em: { fontStyle: 'italic' },
+    link: { color: colors.accent, textDecorationLine: 'underline' },
+    blockquote: {
+      borderLeftWidth: 3, borderLeftColor: colors.accent,
+      paddingLeft: 12, marginLeft: 0, marginVertical: 6,
+      backgroundColor: 'transparent',
+    },
+    code_inline: {
+      backgroundColor: colors.codeBg, color: colors.accent,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      fontSize: 13, paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3,
+    },
+    code_block: {
+      backgroundColor: colors.codeBg, color: colors.textPrimary,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      fontSize: 13, padding: 12, borderRadius: 8, marginVertical: 6, overflow: 'hidden',
+    },
+    fence: {
+      backgroundColor: colors.codeBg, color: colors.textPrimary,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      fontSize: 13, padding: 12, borderRadius: 8, marginVertical: 6, overflow: 'hidden',
+    },
+    bullet_list: { marginBottom: 6 },
+    ordered_list: { marginBottom: 6 },
+    list_item: { flexDirection: 'row', marginBottom: 4 },
+    table: { borderWidth: 1, borderColor: colors.border, borderRadius: 4, marginVertical: 6 },
+    thead: { backgroundColor: colors.bgTertiary },
+    th: { padding: 6, borderRightWidth: 1, borderColor: colors.border, fontWeight: '600' },
+    td: { padding: 6, borderRightWidth: 1, borderColor: colors.border },
+    tr: { borderBottomWidth: 1, borderColor: colors.border },
+    hr: { backgroundColor: colors.border, marginVertical: 12 },
+  }), []);
+
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isUser = item.role === 'user';
     return (
@@ -256,9 +298,15 @@ export function ChatScreen({ route, navigation }: Props) {
             ))}
           </View>
         )}
-        <Text style={[styles.messageText, isUser && styles.userText]} selectable>
-          {item.content || (item.isStreaming ? '' : '[empty]')}
-        </Text>
+        {isUser ? (
+          <Text style={[styles.messageText, styles.userText]} selectable>
+            {item.content || (item.isStreaming ? '' : '[empty]')}
+          </Text>
+        ) : (
+          <Markdown style={mdStyles}>
+            {item.content || (item.isStreaming ? ' ' : '[empty]')}
+          </Markdown>
+        )}
         {item.isStreaming && (
           <ActivityIndicator
             size="small"
