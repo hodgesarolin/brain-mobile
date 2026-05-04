@@ -204,7 +204,11 @@ export function ChatListScreen({ navigation }: Props) {
     <View style={styles.container}>
       <FlatList
         data={chats}
-        keyExtractor={(item) => `${item.source}-${item.id}`}
+        keyExtractor={(item, index) =>
+          item.source === 'archived'
+            ? `archived-${item.filename || `${item.id}-${index}`}`
+            : `active-${item.id}`
+        }
         renderItem={renderItem}
         refreshControl={
           <RefreshControl
